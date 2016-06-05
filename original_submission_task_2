@@ -145,24 +145,24 @@ table(users_2014$y)
 #end
 
 #simple tree model
-tree = train(x=users_2014[,c(-1,-25)], y=users_2014[,25],method="rpart",
-             metric = "ROC",
-             trControl = trainControl(method = "cv", number = 3,
-             summaryFunction = twoClassSummary,classProbs = TRUE,allowParallel = F))
+#tree = train(x=users_2014[,c(-1,-25)], y=users_2014[,25],method="rpart",
+#             metric = "ROC",
+#             trControl = trainControl(method = "cv", number = 3,
+#             summaryFunction = twoClassSummary,classProbs = TRUE,allowParallel = F))
 
-tree_model = tree$finalModel
+#tree_model = tree$finalModel
 
 #simple gbm model
-cl = makeCluster(4)
-registerDoParallel(cl)
-gbm_simple = train(y~C_ALREADY+INC_CAT+SUM+W_SUM+AGE_CAT+GEN+AMT_catc_F+CHANNELn,
-                   data=users_2014,
-                   method="gbm",verbose=F,metric = "ROC",
-                   trControl = trainControl(method = "cv", number = 5,
-                   summaryFunction = twoClassSummary,
-                   classProbs = TRUE,allowParallel = T
-                   ))
-stopCluster(cl)
+#cl = makeCluster(4)
+#registerDoParallel(cl)
+#gbm_simple = train(y~C_ALREADY+INC_CAT+SUM+W_SUM+AGE_CAT+GEN+AMT_catc_F+CHANNELn,
+#                   data=users_2014,
+#                   method="gbm",verbose=F,metric = "ROC",
+#                   trControl = trainControl(method = "cv", number = 5,
+#                   summaryFunction = twoClassSummary,
+#                   classProbs = TRUE,allowParallel = T
+#                   ))
+#stopCluster(cl)
 
 #simple logistic regression model
 logreg_simple = train(y~CREDIT_CARD_F+INC_CAT+YOUNG_INCOME_CATd_F+SUM+SUM_0_F+SUM_1_F+WEALTH_F,
