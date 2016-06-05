@@ -1,0 +1,227 @@
+#aggregating data
+#load libraries and csv
+library(dplyr)
+
+train_2014=read.csv("train_2014.csv")
+
+#change DATE to date
+train_2014$DATE=as.Date(train_2014$DATE, format = "%Y-%m-%d")
+
+#create new filtered table
+agg_train2014 = filter(train_2014,DATE <= "2014-06-30") %>% select(c(1,3,5,7,9))
+
+#create dummy variables
+for(level in unique(agg_train2014$CHANNEL)){
+  agg_train2014[paste0("CHANNEL", level)] <- ifelse(agg_train2014$CHANNEL == level, 1, 0)
+}
+
+for(level in unique(agg_train2014$MC_CAT)){
+  agg_train2014[paste0("MC_cat", level)] <- ifelse(agg_train2014$MC_CAT == level, 1, 0)
+}
+
+for(level in unique(agg_train2014$AMT_CAT)){
+  agg_train2014[paste0("AMT_cat", level)] <- ifelse(agg_train2014$AMT_CAT == level, 1, 0)
+}
+
+for(level in unique(agg_train2014$TIME_CAT)){
+  agg_train2014[paste0("TIME_cat", level)] <- ifelse(agg_train2014$AMT_CAT == level, 1, 0)
+}
+
+#delete not used columns
+agg_train2014$MC_CAT=NULL
+agg_train2014$AMT_CAT=NULL
+agg_train2014$CHANNEL=NULL
+agg_train2014$TIME_CAT=NULL
+
+
+agg_train2014=aggregate(agg_train2014,list(agg_train2014$USER_ID),sum)
+
+colnames(agg_train2014)[1:2]=c("USER_ID","SUM")
+
+write.csv(agg_train2014,"aggregate_sales_data.csv",row.names = F, quote=F)
+
+
+#now the same for the test period!!!
+
+train_2015=read.csv("train_2015.csv")
+
+train_2015$DATE=as.Date(train_2015$DATE, format = "%Y-%m-%d")
+
+agg_train2015 = filter(train_2015,DATE <= "2015-06-30") %>% select(c(1,3,5,7,9))
+
+for(level in unique(agg_train2015$CHANNEL)){
+  agg_train2015[paste0("CHANNEL", level)] <- ifelse(agg_train2015$CHANNEL == level, 1, 0)
+}
+
+for(level in unique(agg_train2015$MC_CAT)){
+  agg_train2015[paste0("MC_cat", level)] <- ifelse(agg_train2015$MC_CAT == level, 1, 0)
+}
+
+for(level in unique(agg_train2015$AMT_CAT)){
+  agg_train2015[paste0("AMT_cat", level)] <- ifelse(agg_train2015$AMT_CAT == level, 1, 0)
+}
+
+for(level in unique(agg_train2015$TIME_CAT)){
+  agg_train2015[paste0("TIME_cat", level)] <- ifelse(agg_train2015$AMT_CAT == level, 1, 0)
+}
+
+
+agg_train2015$MC_CAT=NULL
+agg_train2015$AMT_CAT=NULL
+agg_train2015$CHANNEL=NULL
+agg_train2015$TIME_CAT=NULL
+
+
+agg_train2015=aggregate(agg_train2015,list(agg_train2015$USER_ID),sum)
+
+colnames(agg_train2015)[1:2]=c("USER_ID","SUM")
+
+write.csv(agg_train2015,"aggregate_sales_data_2015.csv",row.names = F, quote=F)
+
+
+#training
+#load more libraries and files
+
+library(foreach)
+library(doParallel)
+library(caret)
+library(gam)
+library(DMwR)
+
+agg_sales_2014 = read.csv("aggregate_sales_data.csv")
+users_2014 = read.csv("users_2014.csv")
+
+users_2014 = merge(users_2014,agg_sales_2014,all.x=T)
+
+#preparing data
+#handling NAs
+for (i in 33:55) {
+  users_2014[,i] = ifelse(is.na(users_2014[,i]),0,users_2014[,i])
+}
+
+#creating target variable
+users_2014$y = ifelse(users_2014$TARGET_TASK_2 %in% c("2014.07.31","2014.08.31","2014.09.30","2014.10.31","2014.11.30","2014.12.31"),1,0)
+
+#creating credit card holder and wealthy sum variables
+users_2014$C_ALREADY = rowSums(users_2014[,9:14])
+users_2014$W_SUM = rowSums(users_2014[,21:26])
+
+#creating shopping sum
+users_2014$SUM = rowSums(users_2014[,34:35])
+
+#creating credit card holder flag
+users_2014$CREDIT_CARD_F = ifelse (users_2014$C_ALREADY>0,1,0)
+
+#create wealth >= 3 flag
+users_2014$WEALTH_F = ifelse(users_2014$W_SUM >= 3, 1, 0)
+
+#create SUM zero and 1 flags
+users_2014$SUM_0_F = ifelse(users_2014$SUM==0,1,0)
+users_2014$SUM_1_F = ifelse(users_2014$SUM==1,1,0)
+
+#create young x unemployed interaction flag
+users_2014$YOUNG_INCOME_CATd_F = ifelse (users_2014$AGE_CAT == "a" &
+                                           users_2014$INC_CAT == "d",1,0)
+#AMT_catc flag
+users_2014$AMT_catc_F = ifelse(users_2014$AMT_catc>0,1,0)
+
+#filtering variables
+users_2014 = users_2014[,-c(6:32)]
+
+#write out data
+#write.csv(users_2014,"task2_pt_base_new.csv",quote=F,row.names = F)
+
+
+#EDA and models
+#transform target variable into factor
+users_2014$y = factor(users_2014$y)
+levels(users_2014$y) = c("no","yes")
+table(users_2014$y)
+
+#parallel computing
+#cl = makeCluster(4)
+#registerDoParallel(cl)
+#stopCluster(cl)
+#end
+
+#simple tree model
+tree = train(x=users_2014[,c(-1,-25)], y=users_2014[,25],method="rpart",
+             metric = "ROC",
+             trControl = trainControl(method = "cv", number = 3,
+             summaryFunction = twoClassSummary,classProbs = TRUE,allowParallel = F))
+
+tree_model = tree$finalModel
+
+#simple gbm model
+cl = makeCluster(4)
+registerDoParallel(cl)
+gbm_simple = train(y~C_ALREADY+INC_CAT+SUM+W_SUM+AGE_CAT+GEN+AMT_catc_F+CHANNELn,
+                   data=users_2014,
+                   method="gbm",verbose=F,metric = "ROC",
+                   trControl = trainControl(method = "cv", number = 5,
+                   summaryFunction = twoClassSummary,
+                   classProbs = TRUE,allowParallel = T
+                   ))
+stopCluster(cl)
+
+#simple logistic regression model
+logreg_simple = train(y~CREDIT_CARD_F+INC_CAT+YOUNG_INCOME_CATd_F+SUM+SUM_0_F+SUM_1_F+WEALTH_F,
+                        data=users_2014,
+                        method="glm",family=binomial,metric = "ROC",
+                        trControl = trainControl(method = "cv", number = 3,
+                        summaryFunction = twoClassSummary,
+                        classProbs = TRUE,allowParallel = F))
+
+#save model
+#save(gbm_simple,file="gbm_simple_1.rda")
+
+#load model
+#load("logreg_simple_1.rda")
+
+#prediction
+#load data
+
+agg_sales_2015 = read.csv("aggregate_sales_data_2015.csv")
+users_2015 = read.csv("users_2015.csv")
+
+users_2015 = merge(users_2015,agg_sales_2015,all.x=T)
+
+#preparing data
+#handling NAs
+for (i in 20:41) {
+  users_2015[,i] = ifelse(is.na(users_2015[,i]),0,users_2015[,i])
+}
+#replacing unknown age with median ("b")
+users_2015$AGE_CAT = as.character(users_2015$AGE_CAT)
+users_2015$AGE_CAT = ifelse (users_2015$AGE_CAT=="-","b",users_2015$AGE_CAT)
+users_2015$AGE_CAT = factor(users_2015$AGE_CAT)
+
+#creating credit card holder and wealthy sum variables
+users_2015$C_ALREADY = rowSums(users_2015[,8:13])
+users_2015$W_SUM = rowSums(users_2015[,14:19])
+
+#creating shopping sum variable
+users_2015$SUM = rowSums(users_2015[,21:22])
+
+#creating credit card holder flag
+users_2015$CREDIT_CARD_F = ifelse (users_2015$C_ALREADY>0,1,0)
+
+#create wealth >= 3 flag
+users_2015$WEALTH_F = ifelse(users_2015$W_SUM >= 3, 1, 0)
+
+#create SUM zero and 1 flags
+users_2015$SUM_0_F = ifelse(users_2015$SUM==0,1,0)
+users_2015$SUM_1_F = ifelse(users_2015$SUM==1,1,0)
+
+#create young x unemployed interaction flag
+users_2015$YOUNG_INCOME_CATd_F = ifelse (users_2015$AGE_CAT == "a" &
+                                           users_2015$INC_CAT == "d",1,0)
+
+#AMT_catc flag
+users_2015$AMT_catc_F = ifelse(users_2015$AMT_catc>0,1,0)
+
+#scoring
+SCORE = predict(logreg_simple,newdata = users_2015,type="prob")
+users_2015$prediction = SCORE[,2]
+submission = users_2015[,c(1,ncol(users_2015))]
+write.csv(submission,"submission_logreg_simple.csv",row.names = F,quote = F)
